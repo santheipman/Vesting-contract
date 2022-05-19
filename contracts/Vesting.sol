@@ -38,12 +38,32 @@ contract Vesting {
         admin = _admin;
     }
 
-
+    // ---------------------
+    // Helper functions
     modifier onlyAdmin {
         require(msg.sender == admin);
         _;
     }
 
+    function currentClaimableAmount(uint256 currentTime, UserInfo memory user) public returns (uint256) {
+        // max amount
+        uint256 maxAmount;
+        uint256 actualClaimableAmount;
+
+        // before cliff: 20%
+        // after cliff: 20% + left * (current - (startTime + cliff)) / timeperperiod;
+        if (currentTime < startTime + cliff) {
+            maxAmount = user.amount / 100 * 20;
+        } else {
+            maxAmount = (user.amount / 100 * 20) + (user.amount / 100 * 80) * ((currentTime - (startTime + cliff)) / timePerPeriod);
+        }
+
+        actualClaimableAmount = maxAmount - user.tokenClaimed;
+
+        return actualClaimableAmount;
+    }
+
+    // Main functions
     function addUserToWhitelist(address user, uint256 amount) external onlyAdmin {
         userInfoList[user].amount = amount;
         userInfoList[user].tokenClaimed = 0;
