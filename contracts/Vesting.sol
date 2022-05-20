@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import "./TestToken.sol";
+// import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Vesting {
@@ -72,13 +73,12 @@ contract Vesting {
                 if (currentTime - (startTime + cliff) >= timePerPeriod * totalPeriod) {
                     maxAmount = user.amount;
                 } else {
-                    uint256 periods = (currentTime - (startTime + cliff)) / timePerPeriod; 
-                    maxAmount = tmp + (user.amount - tmp) * (periods + 1); // after cliff: WRONGGG: imagine currenTime>>;
+                    uint256 periods = (currentTime - (startTime + cliff)) / timePerPeriod;
+                    maxAmount = tmp + (user.amount - tmp) * (periods + 1) / totalPeriod;
                 }
             }
             actualClaimableAmount = maxAmount - user.tokenClaimed;
         }
-
         return actualClaimableAmount;
     }
 

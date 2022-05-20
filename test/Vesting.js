@@ -6,12 +6,9 @@ describe("Vesting", function () {
     let owner;
     let invester;
 
-    let provider;
     let token;
     let vesting;
-    let beginTime;
 
-    let firstRelease;
     let startTime;
     let totalPeriod;
     let timePerPeriod;
@@ -19,15 +16,15 @@ describe("Vesting", function () {
     let totalTokens;
 
     beforeEach(async function () {
-        provider = await ethers.provider; // Hardhat Network (local)
+        const provider = await ethers.provider; // Hardhat Network (local)
 
-        beginTime = (await provider.getBlock("latest")).timestamp;
+        const beginTime = (await provider.getBlock("latest")).timestamp;
 
-        firstRelease = 20; // "fistReleaseRatio = 20" means 20% of max amount of claimable tokens will be released first
-        timeDurationBeforeStart = 7;
+        const firstRelease = 20; // "fistReleaseRatio = 20" means 20% of max amount of claimable tokens will be released first
+        timeDurationBeforeStart = 6;
         startTime = beginTime + timeDurationBeforeStart;
         totalPeriod = 4;
-        timePerPeriod = 5;
+        timePerPeriod = 6;
         cliff = 6;
         totalTokens = 20_000;
         
@@ -72,7 +69,7 @@ describe("Vesting", function () {
             expect(await vesting.getUserAmount(invester.address)).to.equal(0);
         });
 
-        describe("Should vest correctly", async function () {
+        describe("Should vest correctly", function () {
 
             beforeEach(async function () {
                 // fundrasing
@@ -82,27 +79,39 @@ describe("Vesting", function () {
                 vesting.addUserToWhitelist(invester.address, 12000);
             });
 
-            it("Before startTime", async function() {
-                await vesting.connect(invester).claimToken();
-                expect(await token.balanceOf(invester.address)).to.equal(0);
+            describe("Claim one-time-only", function () {
+                it("Before startTime", async function() {
+                    await vesting.connect(invester).claimToken();
+                    expect(await token.balanceOf(invester.address)).to.equal(0);
+                });
+
+                it("During cliff", async function() {
+                    await new Promise(resolve => setTimeout(resolve, (timeDurationBeforeStart + 1) * 1000));
+                    await vesting.connect(invester).claimToken();
+                    expect(await token.balanceOf(invester.address)).to.equal(2400);
+                });
+
+                it("During 2nd period", async function() {
+                    await new Promise(resolve => setTimeout(resolve, (timeDurationBeforeStart + cliff + timePerPeriod + 1) * 1000));
+                    await vesting.connect(invester).claimToken();
+                    expect(await token.balanceOf(invester.address)).to.equal(7200);
+                });
+
+                it("After the last release", async function() {
+                    await new Promise(resolve => setTimeout(resolve, (timeDurationBeforeStart + cliff + timePerPeriod * totalPeriod + 1) * 1000));
+                    await vesting.connect(invester).claimToken();
+                    expect(await token.balanceOf(invester.address)).to.equal(12000);
+                });
             });
 
-            it("During cliff", async function() {
+            it("Claim more than one time", async function () {
                 await new Promise(resolve => setTimeout(resolve, (timeDurationBeforeStart + 1) * 1000));
                 await vesting.connect(invester).claimToken();
                 expect(await token.balanceOf(invester.address)).to.equal(2400);
-            });
 
-            it("During 2nd period", async function() {
-                await new Promise(resolve => setTimeout(resolve, (timeDurationBeforeStart + cliff + timePerPeriod + 1) * 1000));
+                await new Promise(resolve => setTimeout(resolve, ((timeDurationBeforeStart + cliff + timePerPeriod * 2 + 1) - (timeDurationBeforeStart + 1)) * 1000));
                 await vesting.connect(invester).claimToken();
-                expect(await token.balanceOf(invester.address)).to.equal(7200);
-            });
-
-            it("After the last release", async function() {
-                await new Promise(resolve => setTimeout(resolve, (timeDurationBeforeStart + cliff + timePerPeriod * totalPeriod + 1) * 1000));
-                await vesting.connect(invester).claimToken();
-                expect(await token.balanceOf(invester.address)).to.equal(12000);
+                expect(await token.balanceOf(invester.address)).to.equal(9600);
             });
         });
     });
