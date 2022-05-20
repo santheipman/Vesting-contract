@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import "./TestToken.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Vesting {
     struct UserInfo {
@@ -12,7 +13,8 @@ contract Vesting {
 
     mapping(address => UserInfo) private userInfoList;
 
-    uint256 private firstRelease;
+    IERC20 private token;
+    uint256 private firstRelease; // "fistReleaseRatio = 20" means 20% of max amount of claimable tokens will be released first
     uint256 private startTime;
     uint256 private totalPeriod;
     uint256 private timePerPeriod;
@@ -21,6 +23,7 @@ contract Vesting {
     address private admin;
 
     constructor(
+        address _token,
         uint256 _firstRelease,
         uint256 _startTime,
         uint256 _totalPeriod,
@@ -29,6 +32,7 @@ contract Vesting {
         uint256 _totalTokens,
         address _admin
     ) {
+        token = IERC20(_token);
         firstRelease = _firstRelease;
         startTime = _startTime;
         totalPeriod = _totalPeriod;
@@ -45,24 +49,40 @@ contract Vesting {
         _;
     }
 
-    function currentClaimableAmount(uint256 currentTime, UserInfo memory user) public returns (uint256) {
+    function getUserAmount(address user) external onlyAdmin view returns (uint){
+        return userInfoList[user].amount;
+    }
+
+    function getUserTokenClaimed(address user) external onlyAdmin view returns (uint){
+        return userInfoList[user].tokenClaimed;
+    }
+
+    function currentClaimableAmount(uint256 currentTime, UserInfo memory user) public view returns (uint256) {
         // max amount
-        uint256 maxAmount;
         uint256 actualClaimableAmount;
-
-        // before cliff: 20%
-        // after cliff: 20% + left * (current - (startTime + cliff)) / timeperperiod;
-        if (currentTime < startTime + cliff) {
-            maxAmount = user.amount / 100 * 20;
+        
+        if (currentTime < startTime) {
+            actualClaimableAmount = 0;
         } else {
-            maxAmount = (user.amount / 100 * 20) + (user.amount / 100 * 80) * ((currentTime - (startTime + cliff)) / timePerPeriod);
+            uint256 maxAmount;
+            uint256 tmp = user.amount / 100 * firstRelease;
+            if (currentTime < startTime + cliff) {
+                maxAmount = tmp; // before cliff
+            } else {
+                if (currentTime - (startTime + cliff) >= timePerPeriod * totalPeriod) {
+                    maxAmount = user.amount;
+                } else {
+                    uint256 periods = (currentTime - (startTime + cliff)) / timePerPeriod; 
+                    maxAmount = tmp + (user.amount - tmp) * (periods + 1); // after cliff: WRONGGG: imagine currenTime>>;
+                }
+            }
+            actualClaimableAmount = maxAmount - user.tokenClaimed;
         }
-
-        actualClaimableAmount = maxAmount - user.tokenClaimed;
 
         return actualClaimableAmount;
     }
 
+    // ------------------
     // Main functions
     function addUserToWhitelist(address user, uint256 amount) external onlyAdmin {
         userInfoList[user].amount = amount;
@@ -73,8 +93,18 @@ contract Vesting {
         delete userInfoList[user];
     }
 
-    function vestingFund() external onlyAdmin payable {
-        require(msg.value == totalTokens, "Admin must send correct amount of token to the contract");
-    }
+    // function vestingFund() external onlyAdmin returns(bytes memory){
+    //     // (bool success, bytes memory data) = address(token).delegatecall(abi.encodeWithSignature("transfer(address,uint256)", address(this), totalTokens));
+    //     // token.transfer
+    // }
 
+    function claimToken() public {
+        address claimer = msg.sender;
+        uint claimableAmount = currentClaimableAmount(block.timestamp, userInfoList[claimer]);
+
+        // // claim here
+        token.transfer(claimer, claimableAmount);
+
+        userInfoList[claimer].tokenClaimed += claimableAmount;
+    }
 }
