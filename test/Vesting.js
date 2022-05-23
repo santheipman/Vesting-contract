@@ -1,6 +1,5 @@
 const { ethers } = require('hardhat');
 const { expect } = require('chai');
-const { inputToConfig } = require('@ethereum-waffle/compiler');
 
 describe("Vesting", function () {
     let owner;

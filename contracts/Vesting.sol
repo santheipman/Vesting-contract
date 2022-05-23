@@ -3,7 +3,6 @@
 pragma solidity ^0.8.0;
 
 import "./TestToken.sol";
-// import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Vesting {
@@ -22,6 +21,10 @@ contract Vesting {
     uint256 private cliff;
     uint256 private totalTokens;
     address private admin;
+
+    event TokenClaimed(address _claimer, uint256 _claimedAmount);
+    event UserAddedToWhitelist(address _user, uint256 _amount);
+    event UserRemovedFromWhitelist(address _user);
 
     constructor(
         address _token,
@@ -43,7 +46,7 @@ contract Vesting {
         admin = _admin;
     }
 
-    // ---------------------
+    // -----------------------------------------------------
     // Helper functions
     modifier onlyAdmin {
         require(msg.sender == admin);
@@ -63,16 +66,17 @@ contract Vesting {
         uint256 actualClaimableAmount;
         
         if (currentTime < startTime) {
-            actualClaimableAmount = 0;
+            actualClaimableAmount = 0; // before the first release, there's no token to be claimed
         } else {
             uint256 maxAmount;
             uint256 tmp = user.amount / 100 * firstRelease;
             if (currentTime < startTime + cliff) {
-                maxAmount = tmp; // before cliff
+                maxAmount = tmp; // during cliff, max claimable amount equals to first release amount (20%)
             } else {
                 if (currentTime - (startTime + cliff) >= timePerPeriod * totalPeriod) {
-                    maxAmount = user.amount;
+                    maxAmount = user.amount; // all periods have passed
                 } else {
+                    // after cliff and before last period
                     uint256 periods = (currentTime - (startTime + cliff)) / timePerPeriod;
                     maxAmount = tmp + (user.amount - tmp) * (periods + 1) / totalPeriod;
                 }
@@ -82,15 +86,30 @@ contract Vesting {
         return actualClaimableAmount;
     }
 
-    // ------------------
+    // ------------------------------------------------------
     // Main functions
     function addUserToWhitelist(address user, uint256 amount) external onlyAdmin {
         userInfoList[user].amount = amount;
         userInfoList[user].tokenClaimed = 0;
+
+        emit UserAddedToWhitelist(user, amount);
     }
 
     function removeUserFromWhitelist(address user) external onlyAdmin {
         delete userInfoList[user];
+
+        emit UserRemovedFromWhitelist(user);
+    }
+
+    function claimToken() public {
+        address claimer = msg.sender;
+        uint claimableAmount = currentClaimableAmount(block.timestamp, userInfoList[claimer]);
+
+        token.transfer(claimer, claimableAmount);
+
+        emit TokenClaimed(claimer, claimableAmount);
+
+        userInfoList[claimer].tokenClaimed += claimableAmount;
     }
 
     // function vestingFund() external onlyAdmin returns(bytes memory){
@@ -98,13 +117,4 @@ contract Vesting {
     //     // token.transfer
     // }
 
-    function claimToken() public {
-        address claimer = msg.sender;
-        uint claimableAmount = currentClaimableAmount(block.timestamp, userInfoList[claimer]);
-
-        // // claim here
-        token.transfer(claimer, claimableAmount);
-
-        userInfoList[claimer].tokenClaimed += claimableAmount;
-    }
 }
